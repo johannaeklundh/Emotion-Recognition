@@ -88,7 +88,7 @@ for param in model.parameters():
 for param in model.fc.parameters():
     param.requires_grad = True
 
-def train(model, train_loader, valid_loader, test_loader, criterion, opt, epochs, checkpoint_path, result_path):
+def train(model, train_loader, valid_loader, test_loader, class_names, criterion, opt, epochs, checkpoint_path, result_path):
     # Set device to cuda if it is available
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
     model.to(device) # Move model to the right device
@@ -103,10 +103,11 @@ def train(model, train_loader, valid_loader, test_loader, criterion, opt, epochs
     probs = []
 
     for epoch in range(epochs):  # Number of epochs
+        print(f"Epoch {epoch + 1}/{epochs}") 
+
         model.train()
         train_running_loss = 0.0
         correct, total = 0, 0
-        prob = []
 
         for inputs, labels in train_loader:
             inputs, labels = inputs.to(device), labels.to(device)
@@ -136,7 +137,7 @@ def train(model, train_loader, valid_loader, test_loader, criterion, opt, epochs
         train_accuracy = correct / total
         train_accuracies.append(train_accuracy)
 
-        print(f"Epoch {epoch + 1}, Loss: {train_running_loss / len(train_loader)}")
+        print(f"Epoch {epoch + 1}, Loss: {avg_train_loss:.4f}, Accurcacy: {train_accuracy:.4f}")
     
         ## Validation phase ##
         model.eval()
@@ -152,10 +153,9 @@ def train(model, train_loader, valid_loader, test_loader, criterion, opt, epochs
             # Move to device
             val_inputs, val_labels = val_inputs.to(device), val_labels.to(device)
 
-            # Forward pass
-            val_outputs = model(val_inputs)
-
             with torch.no_grad():  # no need to compute gradients here
+                # Forward pass
+                val_outputs = model(val_inputs)
                 val_loss = criterion(val_outputs, val_labels)
                 val_running_loss += val_loss.item() # Increase validation loss
                 # Calculate accuracy
@@ -168,7 +168,7 @@ def train(model, train_loader, valid_loader, test_loader, criterion, opt, epochs
                 epoch_pred_labels.extend(val_predicted.cpu().numpy())
 
             # Calculate probabilities for prediction = class 1 (real) using softmax
-            prob.extend(torch.softmax(val_outputs, dim=1)[:, 1].cpu().detach().numpy())
+            # prob.extend(torch.softmax(val_outputs, dim=1)[:, 1].cpu().detach().numpy())
 
         print(f"Accuracy: {100 * correct / total}%")
         
@@ -179,11 +179,12 @@ def train(model, train_loader, valid_loader, test_loader, criterion, opt, epochs
         val_accuracy = val_correct / val_total
         val_accuracies.append(val_accuracy)
         # Append results to the probs, true_labels, pred_labels lists
-        probs.append(prob)
+        # probs.append(prob)
         true_labels.append(epoch_true_labels)
         pred_labels.append(epoch_pred_labels)
 
         print(f'Epoch {epoch+1}: Validation Loss = {avg_val_loss:.4f}, Validation Accuracy = {val_accuracy:.4f}')
+        
         # Save the checkpoint at the end of each epoch to be able to continue the training later
         torch.save({
             'epoch': epoch +1, # Save the next epoch for proper resumption
@@ -196,17 +197,16 @@ def train(model, train_loader, valid_loader, test_loader, criterion, opt, epochs
     print('Finished Training')
 
     #Confusion Matrix
-    conf_matrix = confusion_matrix((true_labels[-1], pred_labels[-1]))
+    # conf_matrix = confusion_matrix((true_labels[-1], pred_labels[-1]))
     
     ## TEST ##
     # Get predictions on the test set
     model.eval()
 
+    test_predictions = []
+    test_true_labels = []
+
     with torch.no_grad(): # no need to compute gradients here
-
-        test_predictions = []
-        test_true_labels = []
-
         # Iterate over the batches in test_loader
         for images, labels in test_loader:
             images, labels = images.to(device), labels.to(device) # move to device
@@ -217,9 +217,9 @@ def train(model, train_loader, valid_loader, test_loader, criterion, opt, epochs
 
     # Calculate metrics
     accuracy = accuracy_score(test_true_labels, test_predictions)
-    precision = precision_score(test_true_labels, test_predictions, average='binary')
-    recall = recall_score(test_true_labels, test_predictions, average='binary')
-    f1 = f1_score(test_true_labels, test_predictions, average='binary')
+    precision = precision_score(test_true_labels, test_predictions)
+    recall = recall_score(test_true_labels, test_predictions)
+    f1 = f1_score(test_true_labels, test_predictions)
     roc_auc = roc_auc_score(test_true_labels, test_predictions)
 
     # Print the results
@@ -233,7 +233,7 @@ def train(model, train_loader, valid_loader, test_loader, criterion, opt, epochs
     # Test Confusion Matrix
     test_conf_matrix = confusion_matrix(test_true_labels, test_predictions)
 
-    report = classification_report(true_labels[-1], pred_labels[-1], target_names=['Fake', 'Real'])
+    report = classification_report(true_labels, pred_labels, target_names=class_names)
     print("\nClassification Report:\n", report)
     
     # Put results in a dictionary
@@ -254,7 +254,7 @@ def train(model, train_loader, valid_loader, test_loader, criterion, opt, epochs
         'recall': recall,
         'f1': f1,
         'roc_auc': roc_auc,
-        'conf_matrix': conf_matrix,
+        'conf_matrix': test_conf_matrix,
         'test_conf_matrix': test_conf_matrix
       }
     # Save the efficientnet_results dictionary to a file
@@ -265,9 +265,11 @@ def train(model, train_loader, valid_loader, test_loader, criterion, opt, epochs
     
     return model, results
 
-result_path = "efficientnet_result/result_BCE_Adam_001.pkl"
-checkpoint_path = "checkpoints/checkpoint_CE_SGD_001_mom.pth"
+os.makedirs('checkpoints', exist_ok=True)
+os.makedirs('result', exist_ok=True)
+result_path = "result/result_CE_SGD_BASELINE.pkl"
+checkpoint_path = "checkpoints/result_CE_SGD_BASELINE.pth"
 # Loss function and optimizer
 criterion = nn.CrossEntropyLoss()
 optimizer = torch.optim.SGD(model.fc.parameters(), lr=0.001, momentum=0.9)
-# train(model=model, train_loader=train_loader, valid_loader=val_loader, test_loader=test_loader, criterion=criterion, opt=optimizer, epochs=3, checkpoint_path=checkpoint_path, result_path=result_path)
+train(model=model, train_loader=train_loader, valid_loader=val_loader, test_loader=test_loader, class_names = class_names, criterion=criterion, opt=optimizer, epochs=3, checkpoint_path=checkpoint_path, result_path=result_path)
