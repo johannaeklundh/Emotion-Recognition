@@ -291,3 +291,33 @@ checkpoint_path = "checkpoints/result_CE_SGD_BASELINE.pth"
 criterion = nn.CrossEntropyLoss()
 optimizer = torch.optim.SGD(model.fc.parameters(), lr=0.001, momentum=0.9)
 train(model=model, train_loader=train_loader, valid_loader=val_loader, test_loader=test_loader, class_names = class_names, criterion=criterion, opt=optimizer, epochs=3, checkpoint_path=checkpoint_path, result_path=result_path)
+
+## ADDING a custom classification layer ##
+# Load the baseline model
+checkpoint = torch.load('baseline_checkpoint.pth')  # Replace with your checkpoint path
+model.load_state_dict(checkpoint['model_state_dict'])
+
+# Freeze earlier layers to focus on training the new layers initially
+for param in model.parameters():
+    param.requires_grad = False
+
+# Wrap the existing model.fc
+model.fc = nn.Sequential(
+    model.fc,                  # Existing fc layer (already trained during baseline)
+    nn.ReLU(),                 # Add ReLU activation for non-linearity
+    nn.Dropout(0.5),           # Add dropout for regularization
+    nn.Linear(7, 256),         # Additional layer with 256 neurons
+    nn.ReLU(),                 # Add ReLU for the new layer
+    nn.Dropout(0.5),           # Add another dropout
+    nn.Linear(256, 7)          # Output layer for 7 emotion classes
+)
+
+# Print the model to verify the changes
+# print(model)
+
+result_path_added = "result/result_CE_SGD_Added.pkl"
+checkpoint_path_added = "checkpoints/result_CE_SGD_Added.pth"
+# Set the optimizer to update only the new layers initially
+optimizer = torch.optim.SGD(model.fc.parameters(), lr=0.001, momentum=0.9)
+criterion = nn.CrossEntropyLoss()
+train(model=model, train_loader=train_loader, valid_loader=val_loader, test_loader=test_loader, class_names = class_names, criterion=criterion, opt=optimizer, epochs=5, checkpoint_path=checkpoint_path_added, result_path=result_path_added)
