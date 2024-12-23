@@ -265,8 +265,26 @@ def train(model, train_loader, valid_loader, test_loader, class_names, criterion
     
     return model, results
 
+# creates folders to save checkpoints and results
 os.makedirs('checkpoints', exist_ok=True)
 os.makedirs('result', exist_ok=True)
+
+# Restarting the training
+# Start fresh: Reset model weights and optimizer state
+# model.apply(lambda module: module.reset_parameters() if hasattr(module, 'reset_parameters') else None)  # Reset model weights
+# optimizer = torch.optim.Adam(model.parameters(), lr=0.001)  # Reinitialize optimizer
+# start_epoch = 0 # Ensure we start from epoch 0
+# print("Starting training from epoch:", start_epoch)
+
+# To conitune training  ---- needs to be after the initialization of optimizer -----
+# #Load previous epochs (training)
+# checkpoint = torch.load('checkpoint.pth')
+# model.load_state_dict(checkpoint['model_state_dict'])
+# optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+# start_epoch = checkpoint['epoch'] + 1  # This should be 1 for the second epoch
+# print("Starting training from epoch:", start_epoch)
+
+## BASELINE ## 
 result_path = "result/result_CE_SGD_BASELINE.pkl"
 checkpoint_path = "checkpoints/result_CE_SGD_BASELINE.pth"
 # Loss function and optimizer
