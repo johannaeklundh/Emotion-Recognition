@@ -36,7 +36,7 @@ torch.backends.cudnn.benchmark = False
 
 # TO DOWNLOAD THE DATASET, RUN THIS IN TERMINAL WHERE YOU WAN TO STORE IT
 # kaggle datasets download -d msambare/fer2013
-# unzip fer2013zip -d /datasetFer2013/
+# unzip fer2013.zip -d /datasetFer2013/
 
 # Define the paths to the dataset directories
 train_dir = '../dataset/train'
@@ -217,9 +217,9 @@ def train(model, train_loader, valid_loader, test_loader, class_names, criterion
 
     # Calculate metrics
     accuracy = accuracy_score(test_true_labels, test_predictions)
-    precision = precision_score(test_true_labels, test_predictions)
-    recall = recall_score(test_true_labels, test_predictions)
-    f1 = f1_score(test_true_labels, test_predictions)
+    precision = precision_score(test_true_labels, test_predictions, average='weighted')
+    recall = recall_score(test_true_labels, test_predictions, average='weighted')
+    f1 = f1_score(test_true_labels, test_predictions, average='weighted')
     roc_auc = roc_auc_score(test_true_labels, test_predictions)
 
     # Print the results
