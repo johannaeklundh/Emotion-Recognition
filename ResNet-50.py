@@ -4,7 +4,6 @@
 
 import pickle
 import random
-import cv2
 import numpy as np
 import pandas as pd
 from sklearn.metrics import classification_report, confusion_matrix, f1_score, precision_score, recall_score, roc_auc_score, accuracy_score
@@ -17,6 +16,7 @@ from torchvision import datasets, transforms
 from torch.utils.data import DataLoader
 from torch.utils.data import random_split
 from torchvision.models import ResNet50_Weights # Import ResNet50_Weights
+from tqdm import tqdm
 import os
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 print("PyTorch version:", torch.__version__)
@@ -109,7 +109,11 @@ def train(model, train_loader, valid_loader, test_loader, class_names, criterion
         train_running_loss = 0.0
         correct, total = 0, 0
 
-        for inputs, labels in train_loader:
+        # Initialize tqdm progress bar
+        progress_bar = tqdm(enumerate(train_loader), total=len(train_loader), desc=f"Epoch {epoch+1}/{epochs} Training", leave=False)
+
+
+        for batch_idx, (inputs, labels) in progress_bar:
             inputs, labels = inputs.to(device), labels.to(device)
 
             # Zero the parameter gradients
@@ -129,6 +133,12 @@ def train(model, train_loader, valid_loader, test_loader, class_names, criterion
             total += labels.size(0)
             correct += (predicted == labels).sum().item()
 
+            # Update tqdm progress bar
+            progress_bar.set_postfix({
+            'Loss': f"{train_running_loss / (batch_idx + 1):.4f}",
+            'Accuracy': f"{100. * correct / total:.2f}%"
+            })
+
         # Calculate average loss for the training epoch
         avg_train_loss = train_running_loss / len(train_loader)
         train_losses.append(avg_train_loss)
@@ -137,7 +147,8 @@ def train(model, train_loader, valid_loader, test_loader, class_names, criterion
         train_accuracy = correct / total
         train_accuracies.append(train_accuracy)
 
-        print(f"Epoch {epoch + 1}, Loss: {avg_train_loss:.4f}, Accurcacy: {train_accuracy:.4f}")
+
+        print(f"Epoch {epoch + 1}, Training Loss: {avg_train_loss:.4f}, Training Accurcacy: {train_accuracy:.4f}")
     
         ## Validation phase ##
         model.eval()
