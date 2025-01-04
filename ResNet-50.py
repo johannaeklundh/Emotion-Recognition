@@ -6,13 +6,16 @@ import pickle
 import random
 import numpy as np
 import pandas as pd
-from sklearn.metrics import classification_report, confusion_matrix, f1_score, precision_score, recall_score, roc_auc_score, accuracy_score
+from sklearn.metrics import classification_report, confusion_matrix, f1_score, precision_score, recall_score, roc_auc_score, accuracy_score, roc_curve, auc, precision_recall_curve, RocCurveDisplay
+from sklearn.preprocessing import label_binarize
+from itertools import cycle
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torchvision.models import resnet50
-import torch.optim as optim
+#import torch.optim as optim
 import matplotlib.pyplot as plt
+import seaborn as sns
 from torchvision import datasets, transforms
 from torch.utils.data import DataLoader
 from torch.utils.data import random_split
@@ -228,8 +231,6 @@ def train(model, train_loader, valid_loader, test_loader, class_names, criterion
             _, predicted = torch.max(outputs, 1) # get prediction
             test_predictions.extend(predicted.cpu().numpy())
             test_true_labels.extend(labels.cpu().numpy())
-
-            # Calculate probabilities for prediction = class 1 (real) using softmax
             # Get predicted probabilities
             probs = F.softmax(outputs, dim=1)
             test_predicted_probs.extend(probs.cpu().numpy())
@@ -239,7 +240,7 @@ def train(model, train_loader, valid_loader, test_loader, class_names, criterion
     precision = precision_score(test_true_labels, test_predictions, average='weighted', zero_division=0)
     recall = recall_score(test_true_labels, test_predictions, average='weighted', zero_division=0)
     f1 = f1_score(test_true_labels, test_predictions, average='weighted')
-    roc_auc = roc_auc_score(test_true_labels, test_predicted_probs, multi_class='ovo', average='weighted') #documented bug in roc_auc_score
+    roc_auc = roc_auc_score(test_true_labels, test_predicted_probs, multi_class='ovr', average='weighted')
 
     # Print the results
     print('\nTest Results')
@@ -264,14 +265,14 @@ def train(model, train_loader, valid_loader, test_loader, class_names, criterion
     # Put results in a dictionary
     results = {
         'model_state_dict': model.state_dict(),
-        'optimizer_state_dict': optimizer.state_dict(),
+        'optimizer_state_dict': opt.state_dict(),
         'train_losses': train_losses,
         'val_losses': val_losses,
         'train_accuracies': train_accuracies,
         'val_accuracies': val_accuracies,
-        'true_labels': true_labels,
-        'pred_labels': pred_labels,
-        'probs': probs,
+        'true_labels': test_true_labels,
+        'pred_labels': test_predictions,
+        'probs': test_predicted_probs,
         'test_true_labels': test_true_labels,
         'test_predictions': test_predictions,
         'accuracy': accuracy,
@@ -290,9 +291,149 @@ def train(model, train_loader, valid_loader, test_loader, class_names, criterion
     
     return model, results
 
+def plot_figures(results, path, num_epochs):
+    '''
+    Function that, given training, validation and test results, plots and saves images
+    Args:
+    - results (dict): Dictionary containing training, validation and test results
+    - path (str): Path to save images
+    - num_epochs (int): Number of epochs
+    Returns:
+    - None
+    '''
+    train_losses = results['train_losses']
+    val_losses = results['val_losses']
+    train_accuracies = results['train_accuracies']
+    val_accuracies = results['val_accuracies']
+    true_labels = results['true_labels']
+    pred_labels = results['pred_labels']
+    probs = results['probs']
+    conf_matrix = results['conf_matrix']
+    test_conf_matrix = results['test_conf_matrix']
+
+    # Ensure the directory exists
+    output_dir = os.path.dirname(path[0])
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
+    
+    
+    plt.figure(figsize=(15, 16))
+
+    # Training and validation loss curves
+    ax1 = plt.subplot(3, 2, 1)
+    ax1.plot(range(1, num_epochs+1), train_losses, label='Trainining Loss')
+    ax1.plot(range(1, num_epochs+1), val_losses, label='Validation Loss')
+    ax1.set_xlabel('Epochs')
+    ax1.set_ylabel('Loss')
+    ax1.set_title('Training and Validation Loss')
+    ax1.legend()
+    ax1.grid()
+
+    # Training and validation accuracy curves
+    ax2 = plt.subplot(3, 2, 2)
+    ax2.plot(range(1, num_epochs+1), train_accuracies, label='Training Accuracy')
+    ax2.plot(range(1, num_epochs+1), val_accuracies, label='Validation Accuracy')
+    ax2.set_xlabel('Epochs')
+    ax2.set_ylabel('Accuracy')
+    ax2.set_title('Training and Validation Accuracy')
+    ax2.legend()
+    ax2.grid()
+
+    # ROC curve
+    # fpr, tpr, _ = roc_curve(true_labels[-1], probs[-1])
+    # Ensure test_true_labels is a 1D array
+    test_true_labels = np.array(true_labels).ravel()
+    # Ensure test_predicted_probs is a 2D array with the same number of samples as test_true_labels
+    test_predicted_probs = np.array(probs)
+    # Binarize the true labels for multi-class ROC curve
+    true_labels_binarized = label_binarize(test_true_labels, classes=range(len(class_names)))
+
+    # Compute ROC curve and ROC area for each class
+    fpr = dict()
+    tpr = dict()
+    roc_auc = dict()
+    for i in range(len(class_names)):
+        fpr[i], tpr[i], _ = roc_curve(true_labels_binarized[:,i], test_predicted_probs[:,i])
+        roc_auc[i] = auc(fpr[i], tpr[i])
+
+    # Plot ROC curve for each class
+    fig, ax = plt.subplots(figsize=(15, 16))
+
+    ax3 = plt.subplot(3, 2, 3)
+    colors = cycle(["aqua", "darkorange", "cornflowerblue", "red", "green", "purple", "yellow"])
+    for class_id, color in zip(range(len(class_names)), colors):
+        RocCurveDisplay.from_predictions(
+        true_labels_binarized[:, class_id],
+        test_predicted_probs[:, class_id],
+        name=f"ROC curve for {class_names[class_id]} (AUC = {roc_auc[class_id]:.2f})",
+        color=color,
+        ax=ax3,
+        plot_chance_level=False,
+        despine=True,
+)
+
+    ax3.plot([0, 1], [0, 1], 'k--', label='Chance level')
+    ax3.set_xlim([0.0, 1.0])
+    ax3.set_ylim([0.0, 1.05])
+    ax3.set_xlabel('False Positive Rate')
+    ax3.set_ylabel('True Positive Rate')
+    ax3.set_title('Receiver Operating Characteristic (ROC) Curve')
+    ax3.legend(loc="lower right")
+    ax3.grid()
+
+    # Precision-Recall curve
+    precision, recall, _ = precision_recall_curve(true_labels_binarized[-1], probs[-1])
+    ax4 = plt.subplot(3, 2, 4)
+    ax4.plot(recall, precision, color='green', label='Precision-Recall Curve')
+    ax4.set_xlabel('Recall')
+    ax4.set_ylabel('Precision')
+    ax4.set_title('Precision-Recall Curve')
+    ax4.legend()
+    ax4.grid()
+    
+    # Plot the confusion matrix
+    ax5 = plt.subplot(3,2,5)
+    sns.heatmap(conf_matrix, annot=True, fmt='g', cmap='Blues', cbar=True, xticklabels=class_names, yticklabels=class_names, ax=ax5)
+    ax5.set_title('Validation Confusion Matrix (last epoch)')
+    ax5.set_xlabel('Predicted Labels')
+    ax5.set_ylabel('True Labels')
+
+    # Confusion Matrix Testing
+    ax6 = plt.subplot(3,2,6)
+    sns.heatmap(test_conf_matrix, annot=True, fmt='g', cmap='Blues', cbar=True, xticklabels=class_names, yticklabels=class_names, ax=ax6)
+    ax6.set_title('Test Confusion Matrix')
+    ax6.set_xlabel('Predicted Labels')
+    ax6.set_ylabel('True Labels')
+
+   # Adjust layout and save the figure
+    plt.tight_layout()
+    plt.savefig(path[0])
+    plt.close()
+
+def print_result (results, num_epochs):
+
+    train_accuracies = results['train_accuracies']
+    val_accuracies = results['val_accuracies']
+    recall = results['recall']
+    f1 = results['f1']
+    roc = results['roc_auc']
+
+    train_accuracies_last = train_accuracies[num_epochs -1]
+    val_accuracies_last= val_accuracies[num_epochs-1]
+    print('Train Accuracy: ', train_accuracies_last, '\nValid Accuracy: ', val_accuracies_last, '\nRecall: ', recall, '\nF1: ', f1, '\nRoc: ', roc)
+
+
+def load_experiment(result_path):
+    with open(result_path, 'rb') as f:
+        loaded_results = pickle.load(f)
+    print("succsessfully loaded: " + result_path)
+    #print("Loaded training results:", loaded_results)
+    return loaded_results
+
 # creates folders to save checkpoints and results
 os.makedirs('checkpoints', exist_ok=True)
 os.makedirs('result', exist_ok=True)
+os.makedirs('resnet50_result_Images', exist_ok=True)
 
 # Restarting the training
 # Start fresh: Reset model weights and optimizer state
@@ -309,40 +450,50 @@ os.makedirs('result', exist_ok=True)
 # start_epoch = checkpoint['epoch'] + 1  # This should be 1 for the second epoch
 # print("Starting training from epoch:", start_epoch)
 
-## BASELINE ## 
-result_path = "result/result_CE_SGD_BASELINE.pkl"
-checkpoint_path = "checkpoints/result_CE_SGD_BASELINE.pth"
-# Loss function and optimizer
-criterion = nn.CrossEntropyLoss()
-optimizer = torch.optim.SGD(model.fc.parameters(), lr=0.001, momentum=0.9)
-train(model=model, train_loader=train_loader, valid_loader=val_loader, test_loader=test_loader, class_names = class_names, criterion=criterion, opt=optimizer, epochs=1, checkpoint_path=checkpoint_path, result_path=result_path)
+# ## BASELINE ## 
+# result_path = "result/result_CE_SGD_BASELINE.pkl"
+# checkpoint_path = "checkpoints/result_CE_SGD_BASELINE.pth"
+# # Loss function and optimizer
+# criterion = nn.CrossEntropyLoss()
+# optimizer = torch.optim.SGD(model.fc.parameters(), lr=0.001, momentum=0.9)
+# train(model=model, train_loader=train_loader, valid_loader=val_loader, test_loader=test_loader, class_names = class_names, criterion=criterion, opt=optimizer, epochs=1, checkpoint_path=checkpoint_path, result_path=result_path)
 
-## ADDING a custom classification layer ##
-# Load the baseline model
-checkpoint = torch.load('baseline_checkpoint.pth')  # Replace with your checkpoint path
-model.load_state_dict(checkpoint['model_state_dict'])
+# ## ADDING a custom classification layer ##
+# # Load the baseline model
+# checkpoint = torch.load('checkpoints/result_CE_SGD_BASELINE.pth')  # Replace with your checkpoint path
+# model.load_state_dict(checkpoint['model_state_dict'])
 
-# Freeze earlier layers to focus on training the new layers initially
-for param in model.parameters():
-    param.requires_grad = False
+# # Freeze earlier layers to focus on training the new layers initially
+# for param in model.parameters():
+#     param.requires_grad = False
 
-# Wrap the existing model.fc
-model.fc = nn.Sequential(
-    model.fc,                  # Existing fc layer (already trained during baseline)
-    nn.ReLU(),                 # Add ReLU activation for non-linearity
-    nn.Dropout(0.5),           # Add dropout for regularization
-    nn.Linear(7, 256),         # Additional layer with 256 neurons
-    nn.ReLU(),                 # Add ReLU for the new layer
-    nn.Dropout(0.5),           # Add another dropout
-    nn.Linear(256, 7)          # Output layer for 7 emotion classes
-)
+# # Wrap the existing model.fc
+# model.fc = nn.Sequential(
+#     model.fc,                  # Existing fc layer (already trained during baseline)
+#     nn.ReLU(),                 # Add ReLU activation for non-linearity
+#     nn.Dropout(0.5),           # Add dropout for regularization
+#     nn.Linear(7, 256),         # Additional layer with 256 neurons
+#     nn.ReLU(),                 # Add ReLU for the new layer
+#     nn.Dropout(0.5),           # Add another dropout
+#     nn.Linear(256, 7)          # Output layer for 7 emotion classes
+# )
 
-# Print the model to verify the changes
+# # Print the model to verify the changes
 # print(model)
 
-result_path_added = "result/result_CE_SGD_Added.pkl"
-checkpoint_path_added = "checkpoints/result_CE_SGD_Added.pth"
-# Set the optimizer to update only the new layers initially
-optimizer = torch.optim.SGD(model.fc.parameters(), lr=0.001, momentum=0.9)
-criterion = nn.CrossEntropyLoss()
-# train(model=model, train_loader=train_loader, valid_loader=val_loader, test_loader=test_loader, class_names = class_names, criterion=criterion, opt=optimizer, epochs=8, checkpoint_path=checkpoint_path_added, result_path=result_path_added)
+# result_path_added = "result/result_CE_SGD_Added.pkl"
+# checkpoint_path_added = "checkpoints/result_CE_SGD_Added.pth"
+# # Set the optimizer to update only the new layers initially
+# optimizer = torch.optim.SGD(model.fc.parameters(), lr=0.001, momentum=0.9)
+# criterion = nn.CrossEntropyLoss()
+# train(model=model, train_loader=train_loader, valid_loader=val_loader, test_loader=test_loader, class_names = class_names, criterion=criterion, opt=optimizer, epochs=1, checkpoint_path=checkpoint_path_added, result_path=result_path_added)
+
+results_result_CE_SGD_BASELINE = load_experiment('result/result_CE_SGD_BASELINE.pkl')
+result_CE_SGD_BASELINE_paths_plots = ['resnet50_result_Images/result_CE_SGD_BASELINE.png'];
+plot_figures(results_result_CE_SGD_BASELINE, result_CE_SGD_BASELINE_paths_plots, 1)
+print_result(results_result_CE_SGD_BASELINE, 1)
+
+results_result_CE_SGD_Added = load_experiment('result/result_CE_SGD_Added.pkl')
+result_CE_SGD_Added_paths_plots = ['resnet50_result_Images/result_CE_SGD_Added.png'];
+plot_figures(results_result_CE_SGD_Added, result_CE_SGD_Added_paths_plots, 1)
+print_result(results_result_CE_SGD_Added, 1)
