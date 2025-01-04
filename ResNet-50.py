@@ -9,6 +9,7 @@ import pandas as pd
 from sklearn.metrics import classification_report, confusion_matrix, f1_score, precision_score, recall_score, roc_auc_score, accuracy_score
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 from torchvision.models import resnet50
 import torch.optim as optim
 import matplotlib.pyplot as plt
@@ -56,6 +57,7 @@ test_dataset = datasets.ImageFolder(root='../dataset/test', transform=transform5
 
 # Print class names
 class_names = train_dataset.classes
+print ("hello, number of classes:", len(class_names))
 print("Classes:", class_names)
 
 # Define the validation split ratio
@@ -216,6 +218,7 @@ def train(model, train_loader, valid_loader, test_loader, class_names, criterion
 
     test_predictions = []
     test_true_labels = []
+    test_predicted_probs = []
 
     with torch.no_grad(): # no need to compute gradients here
         # Iterate over the batches in test_loader
@@ -226,12 +229,17 @@ def train(model, train_loader, valid_loader, test_loader, class_names, criterion
             test_predictions.extend(predicted.cpu().numpy())
             test_true_labels.extend(labels.cpu().numpy())
 
+            # Calculate probabilities for prediction = class 1 (real) using softmax
+            # Get predicted probabilities
+            probs = F.softmax(outputs, dim=1)
+            test_predicted_probs.extend(probs.cpu().numpy())
+
     # Calculate metrics
     accuracy = accuracy_score(test_true_labels, test_predictions)
-    precision = precision_score(test_true_labels, test_predictions, average='weighted')
-    recall = recall_score(test_true_labels, test_predictions, average='weighted')
+    precision = precision_score(test_true_labels, test_predictions, average='weighted', zero_division=0)
+    recall = recall_score(test_true_labels, test_predictions, average='weighted', zero_division=0)
     f1 = f1_score(test_true_labels, test_predictions, average='weighted')
-    roc_auc = roc_auc_score(test_true_labels, test_predictions)
+    roc_auc = roc_auc_score(test_true_labels, test_predicted_probs, multi_class='ovo', average='weighted') #documented bug in roc_auc_score
 
     # Print the results
     print('\nTest Results')
@@ -244,8 +252,14 @@ def train(model, train_loader, valid_loader, test_loader, class_names, criterion
     # Test Confusion Matrix
     test_conf_matrix = confusion_matrix(test_true_labels, test_predictions)
 
-    report = classification_report(true_labels, pred_labels, target_names=class_names)
-    print("\nClassification Report:\n", report)
+    # report = classification_report(true_labels, pred_labels, target_names=class_names)
+    # print("\nClassification Report:\n", report)
+
+    # Generate classification report for each class
+    # for i, class_name in enumerate(class_names):
+    #     print(f"\nClassification Report for class {class_name}:\n")
+    #     print(classification_report(test_true_labels, test_predictions, target_names=[class_name]))
+
     
     # Put results in a dictionary
     results = {
@@ -301,7 +315,7 @@ checkpoint_path = "checkpoints/result_CE_SGD_BASELINE.pth"
 # Loss function and optimizer
 criterion = nn.CrossEntropyLoss()
 optimizer = torch.optim.SGD(model.fc.parameters(), lr=0.001, momentum=0.9)
-train(model=model, train_loader=train_loader, valid_loader=val_loader, test_loader=test_loader, class_names = class_names, criterion=criterion, opt=optimizer, epochs=3, checkpoint_path=checkpoint_path, result_path=result_path)
+train(model=model, train_loader=train_loader, valid_loader=val_loader, test_loader=test_loader, class_names = class_names, criterion=criterion, opt=optimizer, epochs=1, checkpoint_path=checkpoint_path, result_path=result_path)
 
 ## ADDING a custom classification layer ##
 # Load the baseline model
@@ -331,4 +345,4 @@ checkpoint_path_added = "checkpoints/result_CE_SGD_Added.pth"
 # Set the optimizer to update only the new layers initially
 optimizer = torch.optim.SGD(model.fc.parameters(), lr=0.001, momentum=0.9)
 criterion = nn.CrossEntropyLoss()
-train(model=model, train_loader=train_loader, valid_loader=val_loader, test_loader=test_loader, class_names = class_names, criterion=criterion, opt=optimizer, epochs=5, checkpoint_path=checkpoint_path_added, result_path=result_path_added)
+# train(model=model, train_loader=train_loader, valid_loader=val_loader, test_loader=test_loader, class_names = class_names, criterion=criterion, opt=optimizer, epochs=8, checkpoint_path=checkpoint_path_added, result_path=result_path_added)
