@@ -13,7 +13,6 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torchvision.models import resnet50
-#import torch.optim as optim
 import matplotlib.pyplot as plt
 import seaborn as sns
 from torchvision import datasets, transforms
@@ -183,9 +182,6 @@ def train(model, train_loader, valid_loader, test_loader, class_names, criterion
                 epoch_true_labels.extend(val_labels.cpu().numpy())
                 epoch_pred_labels.extend(val_predicted.cpu().numpy())
 
-            # Calculate probabilities for prediction = class 1 (real) using softmax
-            # prob.extend(torch.softmax(val_outputs, dim=1)[:, 1].cpu().detach().numpy())
-
         print(f"Accuracy: {100 * correct / total}%")
         
         # Calculate average loss for the validation epoch
@@ -195,7 +191,6 @@ def train(model, train_loader, valid_loader, test_loader, class_names, criterion
         val_accuracy = val_correct / val_total
         val_accuracies.append(val_accuracy)
         # Append results to the probs, true_labels, pred_labels lists
-        # probs.append(prob)
         true_labels.append(epoch_true_labels)
         pred_labels.append(epoch_pred_labels)
 
@@ -212,9 +207,6 @@ def train(model, train_loader, valid_loader, test_loader, class_names, criterion
     
     print('Finished Training')
 
-    #Confusion Matrix
-    # conf_matrix = confusion_matrix((true_labels[-1], pred_labels[-1]))
-    
     ## TEST ##
     # Get predictions on the test set
     model.eval()
@@ -252,15 +244,6 @@ def train(model, train_loader, valid_loader, test_loader, class_names, criterion
 
     # Test Confusion Matrix
     test_conf_matrix = confusion_matrix(test_true_labels, test_predictions)
-
-    # report = classification_report(true_labels, pred_labels, target_names=class_names)
-    # print("\nClassification Report:\n", report)
-
-    # Generate classification report for each class
-    # for i, class_name in enumerate(class_names):
-    #     print(f"\nClassification Report for class {class_name}:\n")
-    #     print(classification_report(test_true_labels, test_predictions, target_names=[class_name]))
-
     
     # Put results in a dictionary
     results = {
@@ -316,7 +299,6 @@ def plot_figures(results, path, num_epochs):
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
     
-    
     plt.figure(figsize=(15, 16))
 
     # Training and validation loss curves
@@ -340,7 +322,6 @@ def plot_figures(results, path, num_epochs):
     ax2.grid()
 
     # ROC curve
-    # fpr, tpr, _ = roc_curve(true_labels[-1], probs[-1])
     # Ensure test_true_labels is a 1D array
     test_true_labels = np.array(true_labels).ravel()
     # Ensure test_predicted_probs is a 2D array with the same number of samples as test_true_labels
@@ -450,43 +431,43 @@ os.makedirs('resnet50_result_Images', exist_ok=True)
 # start_epoch = checkpoint['epoch'] + 1  # This should be 1 for the second epoch
 # print("Starting training from epoch:", start_epoch)
 
-# ## BASELINE ## 
-# result_path = "result/result_CE_SGD_BASELINE.pkl"
-# checkpoint_path = "checkpoints/result_CE_SGD_BASELINE.pth"
-# # Loss function and optimizer
-# criterion = nn.CrossEntropyLoss()
-# optimizer = torch.optim.SGD(model.fc.parameters(), lr=0.001, momentum=0.9)
-# train(model=model, train_loader=train_loader, valid_loader=val_loader, test_loader=test_loader, class_names = class_names, criterion=criterion, opt=optimizer, epochs=1, checkpoint_path=checkpoint_path, result_path=result_path)
+## BASELINE ## 
+result_path = "result/result_CE_SGD_BASELINE.pkl"
+checkpoint_path = "checkpoints/result_CE_SGD_BASELINE.pth"
+# Loss function and optimizer
+criterion = nn.CrossEntropyLoss()
+optimizer = torch.optim.SGD(model.fc.parameters(), lr=0.001, momentum=0.9)
+train(model=model, train_loader=train_loader, valid_loader=val_loader, test_loader=test_loader, class_names = class_names, criterion=criterion, opt=optimizer, epochs=1, checkpoint_path=checkpoint_path, result_path=result_path)
 
-# ## ADDING a custom classification layer ##
-# # Load the baseline model
-# checkpoint = torch.load('checkpoints/result_CE_SGD_BASELINE.pth')  # Replace with your checkpoint path
-# model.load_state_dict(checkpoint['model_state_dict'])
+## ADDING a custom classification layer ##
+# Load the baseline model
+checkpoint = torch.load('checkpoints/result_CE_SGD_BASELINE.pth')  # Replace with your checkpoint path
+model.load_state_dict(checkpoint['model_state_dict'])
 
-# # Freeze earlier layers to focus on training the new layers initially
-# for param in model.parameters():
-#     param.requires_grad = False
+# Freeze earlier layers to focus on training the new layers initially
+for param in model.parameters():
+    param.requires_grad = False
 
-# # Wrap the existing model.fc
-# model.fc = nn.Sequential(
-#     model.fc,                  # Existing fc layer (already trained during baseline)
-#     nn.ReLU(),                 # Add ReLU activation for non-linearity
-#     nn.Dropout(0.5),           # Add dropout for regularization
-#     nn.Linear(7, 256),         # Additional layer with 256 neurons
-#     nn.ReLU(),                 # Add ReLU for the new layer
-#     nn.Dropout(0.5),           # Add another dropout
-#     nn.Linear(256, 7)          # Output layer for 7 emotion classes
-# )
+# Wrap the existing model.fc
+model.fc = nn.Sequential(
+    model.fc,                  # Existing fc layer (already trained during baseline)
+    nn.ReLU(),                 # Add ReLU activation for non-linearity
+    nn.Dropout(0.5),           # Add dropout for regularization
+    nn.Linear(7, 256),         # Additional layer with 256 neurons
+    nn.ReLU(),                 # Add ReLU for the new layer
+    nn.Dropout(0.5),           # Add another dropout
+    nn.Linear(256, 7)          # Output layer for 7 emotion classes
+)
 
-# # Print the model to verify the changes
-# print(model)
+# Print the model to verify the changes
+print(model)
 
-# result_path_added = "result/result_CE_SGD_Added.pkl"
-# checkpoint_path_added = "checkpoints/result_CE_SGD_Added.pth"
-# # Set the optimizer to update only the new layers initially
-# optimizer = torch.optim.SGD(model.fc.parameters(), lr=0.001, momentum=0.9)
-# criterion = nn.CrossEntropyLoss()
-# train(model=model, train_loader=train_loader, valid_loader=val_loader, test_loader=test_loader, class_names = class_names, criterion=criterion, opt=optimizer, epochs=1, checkpoint_path=checkpoint_path_added, result_path=result_path_added)
+result_path_added = "result/result_CE_SGD_Added.pkl"
+checkpoint_path_added = "checkpoints/result_CE_SGD_Added.pth"
+# Set the optimizer to update only the new layers initially
+optimizer = torch.optim.SGD(model.fc.parameters(), lr=0.001, momentum=0.9)
+criterion = nn.CrossEntropyLoss()
+train(model=model, train_loader=train_loader, valid_loader=val_loader, test_loader=test_loader, class_names = class_names, criterion=criterion, opt=optimizer, epochs=1, checkpoint_path=checkpoint_path_added, result_path=result_path_added)
 
 results_result_CE_SGD_BASELINE = load_experiment('result/result_CE_SGD_BASELINE.pkl')
 result_CE_SGD_BASELINE_paths_plots = ['resnet50_result_Images/result_CE_SGD_BASELINE.png'];
