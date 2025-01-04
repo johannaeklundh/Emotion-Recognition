@@ -437,7 +437,7 @@ checkpoint_path = "checkpoints/result_CE_SGD_BASELINE.pth"
 # Loss function and optimizer
 criterion = nn.CrossEntropyLoss()
 optimizer = torch.optim.SGD(model.fc.parameters(), lr=0.001, momentum=0.9)
-train(model=model, train_loader=train_loader, valid_loader=val_loader, test_loader=test_loader, class_names = class_names, criterion=criterion, opt=optimizer, epochs=1, checkpoint_path=checkpoint_path, result_path=result_path)
+train(model=model, train_loader=train_loader, valid_loader=val_loader, test_loader=test_loader, class_names = class_names, criterion=criterion, opt=optimizer, epochs=8, checkpoint_path=checkpoint_path, result_path=result_path)
 
 ## ADDING a custom classification layer ##
 # Load the baseline model
@@ -467,14 +467,14 @@ checkpoint_path_added = "checkpoints/result_CE_SGD_Added.pth"
 # Set the optimizer to update only the new layers initially
 optimizer = torch.optim.SGD(model.fc.parameters(), lr=0.001, momentum=0.9)
 criterion = nn.CrossEntropyLoss()
-train(model=model, train_loader=train_loader, valid_loader=val_loader, test_loader=test_loader, class_names = class_names, criterion=criterion, opt=optimizer, epochs=1, checkpoint_path=checkpoint_path_added, result_path=result_path_added)
+train(model=model, train_loader=train_loader, valid_loader=val_loader, test_loader=test_loader, class_names = class_names, criterion=criterion, opt=optimizer, epochs=8, checkpoint_path=checkpoint_path_added, result_path=result_path_added)
 
 results_result_CE_SGD_BASELINE = load_experiment('result/result_CE_SGD_BASELINE.pkl')
 result_CE_SGD_BASELINE_paths_plots = ['resnet50_result_Images/result_CE_SGD_BASELINE.png'];
-plot_figures(results_result_CE_SGD_BASELINE, result_CE_SGD_BASELINE_paths_plots, 1)
-print_result(results_result_CE_SGD_BASELINE, 1)
+plot_figures(results_result_CE_SGD_BASELINE, result_CE_SGD_BASELINE_paths_plots, 8)
+print_result(results_result_CE_SGD_BASELINE, 8)
 
 results_result_CE_SGD_Added = load_experiment('result/result_CE_SGD_Added.pkl')
 result_CE_SGD_Added_paths_plots = ['resnet50_result_Images/result_CE_SGD_Added.png'];
-plot_figures(results_result_CE_SGD_Added, result_CE_SGD_Added_paths_plots, 1)
-print_result(results_result_CE_SGD_Added, 1)
+plot_figures(results_result_CE_SGD_Added, result_CE_SGD_Added_paths_plots, 8)
+print_result(results_result_CE_SGD_Added, 8)
