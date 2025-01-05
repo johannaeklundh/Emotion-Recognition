@@ -54,12 +54,11 @@ transform50 = transforms.Compose([
 ])
 
 # Load datasets
-train_dataset = datasets.ImageFolder(root='../dataset/train', transform=transform50)
-test_dataset = datasets.ImageFolder(root='../dataset/test', transform=transform50)
+train_dataset = datasets.ImageFolder(root=train_dir, transform=transform50)
+test_dataset = datasets.ImageFolder(root=test_dir, transform=transform50)
 
 # Print class names
 class_names = train_dataset.classes
-print ("hello, number of classes:", len(class_names))
 print("Classes:", class_names)
 
 # Define the validation split ratio
@@ -93,18 +92,30 @@ for param in model.fc.parameters():
     param.requires_grad = True
 
 def train(model, train_loader, valid_loader, test_loader, class_names, criterion, opt, epochs, checkpoint_path, result_path):
+    '''
+    Function to train a model and evaluate it on the validation and test sets
+    Args:
+    - model (nn.Module): The model to train
+    - train_loader (DataLoader): DataLoader for the training set
+    - valid_loader (DataLoader): DataLoader for the validation set
+    - test_loader (DataLoader): DataLoader for the test set
+    - class_names (list): List of class names
+    - criterion (nn.Module): Loss function
+    - opt (torch.optim.Optimizer): Optimizer
+    - epochs (int): Number of epochs
+    - checkpoint_path (str): Path to save the model checkpoint
+    - result_path (str): Path to save the training results
+    Returns:
+    - model (nn.Module): Trained model
+    - results (dict): Dictionary containing training, validation and test results
+    '''
+
     # Set device to cuda if it is available
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
     model.to(device) # Move model to the right device
 
     # Initialize lists for accuracies, losses, Grad-CAM images, probabilities of predicting class 1
-    train_losses = []
-    train_accuracies = []
-    val_losses = []
-    val_accuracies = []
-    true_labels = []
-    pred_labels = []
-    probs = []
+    train_losses, train_accuracies, val_losses, val_accuracies, true_labels, pred_labels, probs = [], [], [], [], [], [], []
 
     for epoch in range(epochs):  # Number of epochs
         print(f"Epoch {epoch + 1}/{epochs}") 
@@ -403,6 +414,18 @@ def print_result (results, num_epochs):
     val_accuracies_last= val_accuracies[num_epochs-1]
     print('Train Accuracy: ', train_accuracies_last, '\nValid Accuracy: ', val_accuracies_last, '\nRecall: ', recall, '\nF1: ', f1, '\nRoc: ', roc)
 
+    # Calculate the number of correctly and incorrectly classified images
+    total_images = len(results['test_true_labels'])
+    correct_classifications = int(total_images * results['accuracy'])
+    incorrect_classifications = total_images - correct_classifications
+    
+    print('Train Accuracy: ', train_accuracies_last)
+    print('Valid Accuracy: ', val_accuracies_last)
+    print('Correctly Classified Images: ', correct_classifications)
+    print('Correct Classification Rate: ', results['accuracy'])
+    print('Incorrectly Classified Images: ', incorrect_classifications)
+    print('Incorrect Classification Rate: ', 1 - results['accuracy'])
+
 
 def load_experiment(result_path):
     with open(result_path, 'rb') as f:
@@ -432,12 +455,12 @@ os.makedirs('resnet50_result_Images', exist_ok=True)
 # print("Starting training from epoch:", start_epoch)
 
 ## BASELINE ## 
-result_path = "result/result_CE_SGD_BASELINE.pkl"
-checkpoint_path = "checkpoints/result_CE_SGD_BASELINE.pth"
-# Loss function and optimizer
-criterion = nn.CrossEntropyLoss()
-optimizer = torch.optim.SGD(model.fc.parameters(), lr=0.001, momentum=0.9)
-train(model=model, train_loader=train_loader, valid_loader=val_loader, test_loader=test_loader, class_names = class_names, criterion=criterion, opt=optimizer, epochs=8, checkpoint_path=checkpoint_path, result_path=result_path)
+# result_path = "result/result_CE_SGD_BASELINE.pkl"
+# checkpoint_path = "checkpoints/result_CE_SGD_BASELINE.pth"
+# # Loss function and optimizer
+# criterion = nn.CrossEntropyLoss()
+# optimizer = torch.optim.SGD(model.fc.parameters(), lr=0.001, momentum=0.9)
+# train(model=model, train_loader=train_loader, valid_loader=val_loader, test_loader=test_loader, class_names = class_names, criterion=criterion, opt=optimizer, epochs=8, checkpoint_path=checkpoint_path, result_path=result_path)
 
 ## ADDING a custom classification layer ##
 # Load the baseline model
@@ -460,21 +483,35 @@ model.fc = nn.Sequential(
 )
 
 # Print the model to verify the changes
-print(model)
+# print(model)
 
-result_path_added = "result/result_CE_SGD_Added.pkl"
-checkpoint_path_added = "checkpoints/result_CE_SGD_Added.pth"
-# Set the optimizer to update only the new layers initially
-optimizer = torch.optim.SGD(model.fc.parameters(), lr=0.001, momentum=0.9)
-criterion = nn.CrossEntropyLoss()
-train(model=model, train_loader=train_loader, valid_loader=val_loader, test_loader=test_loader, class_names = class_names, criterion=criterion, opt=optimizer, epochs=8, checkpoint_path=checkpoint_path_added, result_path=result_path_added)
+# Experiment with different optimizers and learning rates
+optimizers = [
+    (torch.optim.SGD(model.fc.parameters(), lr=0.001, momentum=0.9), 0.001),
+    (torch.optim.SGD(model.fc.parameters(), lr=0.0001, momentum=0.9), 0.0001),
+    (torch.optim.Adam(model.fc.parameters(), lr=0.001), 0.001),
+    (torch.optim.Adam(model.fc.parameters(), lr=0.0001), 0.0001)
+]
 
-results_result_CE_SGD_BASELINE = load_experiment('result/result_CE_SGD_BASELINE.pkl')
-result_CE_SGD_BASELINE_paths_plots = ['resnet50_result_Images/result_CE_SGD_BASELINE.png'];
-plot_figures(results_result_CE_SGD_BASELINE, result_CE_SGD_BASELINE_paths_plots, 8)
-print_result(results_result_CE_SGD_BASELINE, 8)
+for optimizer, lr in optimizers:
+    criterion = nn.CrossEntropyLoss()
+    optimizer_name = optimizer.__class__.__name__
+    result_path_added = f"result/result_{optimizer_name}_lr{lr}.pkl"
+    checkpoint_path_added = f"checkpoints/result_{optimizer_name}_lr{lr}.pth"
+    train(model=model, train_loader=train_loader, valid_loader=val_loader, test_loader=test_loader, class_names=class_names, criterion=criterion, opt=optimizer, epochs=8, checkpoint_path=checkpoint_path_added, result_path=result_path_added)
+    results = load_experiment(result_path_added)
+    print_result(results, 8)
 
-results_result_CE_SGD_Added = load_experiment('result/result_CE_SGD_Added.pkl')
-result_CE_SGD_Added_paths_plots = ['resnet50_result_Images/result_CE_SGD_Added.png'];
-plot_figures(results_result_CE_SGD_Added, result_CE_SGD_Added_paths_plots, 8)
-print_result(results_result_CE_SGD_Added, 8)
+# results_result_CE_SGD_BASELINE = load_experiment('result/result_CE_SGD_BASELINE.pkl')
+# result_CE_SGD_BASELINE_paths_plots = ['resnet50_result_Images/result_CE_SGD_BASELINE.png']
+# plot_figures(results_result_CE_SGD_BASELINE, result_CE_SGD_BASELINE_paths_plots, 8)
+# print_result(results_result_CE_SGD_BASELINE, 8)
+
+# results_result_CE_SGD_Added = load_experiment('result/result_CE_SGD_Added.pkl')
+# result_CE_SGD_Added_paths_plots = ['resnet50_result_Images/result_CE_SGD_Added.png']
+# plot_figures(results_result_CE_SGD_Added, result_CE_SGD_Added_paths_plots, 8)
+# print_result(results_result_CE_SGD_Added, 8)
+
+# results_result_CE_Adam_Added = load_experiment('result/result_CE_Adam_Added.pkl')
+# result_CE_Adam_Added_paths_plots = ['resnet50_result_Images/result_CE_Adam_Added.png']
+# print_result(results_result_CE_Adam_Added, 1)
