@@ -237,7 +237,7 @@ def train(model, train_loader, valid_loader, test_loader, class_names, criterion
         torch.save({
             'epoch': epoch +1, # Save the next epoch for proper resumption
             'model_state_dict': model.state_dict(),
-            'optimizer_state_dict': optimizer.state_dict(),
+            'optimizer_state_dict': opt.state_dict(),
             'valid_loss': avg_val_loss  # Save validation loss for reference
         }, checkpoint_path)
         print(f"Checkpoint saved at epoch {epoch + 1}")
