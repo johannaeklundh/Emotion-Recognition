@@ -71,8 +71,8 @@ def split_data():
 
     # Randomly split the dataset and save the indices
     train_indices, val_indices = torch.utils.data.random_split(range(len(train_dataset)), [train_size, val_size])
-    np.save('train_indices.npy', train_indices)
-    np.save('val_indices.npy', val_indices)
+    np.save('train_indices.npy', train_indices.indices)
+    np.save('val_indices.npy', val_indices.indices)
 
 def load_data():
     ''''
@@ -106,8 +106,8 @@ def load_data():
     class_names = train_dataset.classes
 
     # Load the saved indices
-    train_indices = np.load('train_indices.npy')
-    val_indices = np.load('val_indices.npy')
+    train_indices = np.load('train_indices.npy', allow_pickle=True)
+    val_indices = np.load('val_indices.npy', allow_pickle=True)
     # Create Subsets using the saved indices
     train_dataset = Subset(train_dataset, train_indices)
     val_dataset = Subset(train_dataset, val_indices)
