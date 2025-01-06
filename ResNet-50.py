@@ -16,7 +16,7 @@ from torchvision.models import resnet50
 import matplotlib.pyplot as plt
 import seaborn as sns
 from torchvision import datasets, transforms
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, Subset
 from torch.utils.data import random_split
 from torchvision.models import ResNet50_Weights # Import ResNet50_Weights
 from tqdm import tqdm
@@ -40,56 +40,80 @@ torch.backends.cudnn.benchmark = False
 # TO DOWNLOAD THE DATASET, RUN THIS IN TERMINAL WHERE YOU WAN TO STORE IT
 # kaggle datasets download -d msambare/fer2013
 # unzip fer2013.zip -d /datasetFer2013/
+def split_data():
+    '''
+    Function to split the data into training, validation and test sets
+    Args:
+    - None
+    Returns:
+    - None
+    '''
+    # Define the paths to the dataset directories
+    train_dir = '../dataset/train'
+    test_dir = '../dataset/test'
 
-# Define the paths to the dataset directories
-train_dir = '../dataset/train'
-test_dir = '../dataset/test'
+    # Data transformations
+    transform50 = transforms.Compose([
+        transforms.Grayscale(num_output_channels=3),  # Convert grayscale to RGB
+        transforms.Resize((224, 224)),               # Resize for ResNet
+        transforms.ToTensor(),                       # Convert to PyTorch tensor
+        transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])  # Normalize
+    ])
 
-# Data transformations
-transform50 = transforms.Compose([
-    transforms.Grayscale(num_output_channels=3),  # Convert grayscale to RGB
-    transforms.Resize((224, 224)),               # Resize for ResNet
-    transforms.ToTensor(),                       # Convert to PyTorch tensor
-    transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])  # Normalize
-])
+    # Load datasets
+    train_dataset = datasets.ImageFolder(root=train_dir, transform=transform50)
+    test_dataset = datasets.ImageFolder(root=test_dir, transform=transform50)
 
-# Load datasets
-train_dataset = datasets.ImageFolder(root=train_dir, transform=transform50)
-test_dataset = datasets.ImageFolder(root=test_dir, transform=transform50)
+    # Define the validation split ratio
+    val_size = int(0.2 * len(train_dataset))  # 20% for validation
+    train_size = len(train_dataset) - val_size
 
-# Print class names
-class_names = train_dataset.classes
-print("Classes:", class_names)
+    # Randomly split the dataset and save the indices
+    train_indices, val_indices = torch.utils.data.random_split(range(len(train_dataset)), [train_size, val_size])
+    np.save('train_indices.npy', train_indices)
+    np.save('val_indices.npy', val_indices)
 
-# Define the validation split ratio
-val_size = int(0.2 * len(train_dataset))  # 20% for validation
-train_size = len(train_dataset) - val_size
-# Randomly split the dataset
-train_dataset, val_dataset = random_split(train_dataset, [train_size, val_size])
-# Create DataLoaders for the training and validation datasets
-train_loader = DataLoader(train_dataset, batch_size=64, shuffle=True)  # Shuffle enabled
-val_loader = DataLoader(val_dataset, batch_size=64, shuffle=False)     # No shuffle for validation
-test_loader = DataLoader(test_dataset, batch_size=64, shuffle=False)
+def load_data():
+    ''''
+    Function to load the data and create DataLoaders for training, validation and testing
+    Args:
+    - None
+    Returns:
+    - train_loader (DataLoader): DataLoader for the training set
+    - val_loader (DataLoader): DataLoader for the validation set
+    - test_loader (DataLoader): DataLoader for the test set
+    - class_names (list): List of class names
+    '''
 
+    
+    # Define the paths to the dataset directories
+    train_dir = '../dataset/train'
+    test_dir = '../dataset/test'
 
-# Load pre-trained ResNet-50
-model = resnet50(weights=ResNet50_Weights.DEFAULT)
+    # Data transformations
+    transform50 = transforms.Compose([
+        transforms.Grayscale(num_output_channels=3),  # Convert grayscale to RGB
+        transforms.Resize((224, 224)),               # Resize for ResNet
+        transforms.ToTensor(),                       # Convert to PyTorch tensor
+        transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])  # Normalize
+    ])
 
-# Modify the final layer for 7 emotion classes
-num_ftrs = model.fc.in_features
-model.fc = nn.Linear(num_ftrs, len(class_names))
+    # Load datasets
+    train_dataset = datasets.ImageFolder(root=train_dir, transform=transform50)
+    test_dataset = datasets.ImageFolder(root=test_dir, transform=transform50)
 
-# Move model to GPU if available
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-model = model.to(device)
+    # Load the saved indices
+    train_indices = np.load('train_indices.npy')
+    val_indices = np.load('val_indices.npy')
+    # Create Subsets using the saved indices
+    train_dataset = Subset(train_dataset, train_indices)
+    val_dataset = Subset(train_dataset, val_indices)
+    # Create DataLoaders for the training and validation datasets
 
-# Freeze the convolutional and intermediate layers
-for param in model.parameters():
-    param.requires_grad = False
-
-# Unfreeze the final fully connected layer (the last layer)
-for param in model.fc.parameters():
-    param.requires_grad = True
+    train_loader = DataLoader(train_dataset, batch_size=64, shuffle=True)  # Shuffle enabled
+    val_loader = DataLoader(val_dataset, batch_size=64, shuffle=False)     # No shuffle for validation
+    test_loader = DataLoader(test_dataset, batch_size=64, shuffle=False)  # No shuffle for testing
+    return train_loader, val_loader, test_loader, class_names
 
 def train(model, train_loader, valid_loader, test_loader, class_names, criterion, opt, epochs, checkpoint_path, result_path):
     '''
@@ -426,7 +450,6 @@ def print_result (results, num_epochs):
     print('Incorrectly Classified Images: ', incorrect_classifications)
     print('Incorrect Classification Rate: ', 1 - results['accuracy'])
 
-
 def load_experiment(result_path):
     with open(result_path, 'rb') as f:
         loaded_results = pickle.load(f)
@@ -439,79 +462,226 @@ os.makedirs('checkpoints', exist_ok=True)
 os.makedirs('result', exist_ok=True)
 os.makedirs('resnet50_result_Images', exist_ok=True)
 
-# Restarting the training
-# Start fresh: Reset model weights and optimizer state
-# model.apply(lambda module: module.reset_parameters() if hasattr(module, 'reset_parameters') else None)  # Reset model weights
-# optimizer = torch.optim.Adam(model.parameters(), lr=0.001)  # Reinitialize optimizer
-# start_epoch = 0 # Ensure we start from epoch 0
-# print("Starting training from epoch:", start_epoch)
+def continueStartedTraining(model, optimizer, train_loader, val_loader, test_loader, class_names, criterion, epochs, checkpoint_path):
+    '''
+    Args:
+    - model (nn.Module): The model to train
+    - optimizer (torch.optim.Optimizer): Optimizer
+    - train_loader (DataLoader): DataLoader for the training set
+    - val_loader (DataLoader): DataLoader for the validation set
+    - test_loader (DataLoader): DataLoader for the test set
+    - class_names (list): List of class names
+    - criterion (nn.Module): Loss function
+    - epochs (int): Number of epochs
+    - checkpoint_path (str): Path to save the model checkpoint
+    Returns:
+    - None
+    '''
+    # To conitune training  ---- needs to be after the initialization of optimizer -----
+    #Load previous epochs (training)
+    checkpoint = torch.load('checkpoint.pth')
+    model.load_state_dict(checkpoint['model_state_dict'])
+    optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+    start_epoch = checkpoint['epoch'] + 1  # This should be 1 for the second epoch
+    print("Starting training from epoch:", start_epoch)
 
-# To conitune training  ---- needs to be after the initialization of optimizer -----
-# #Load previous epochs (training)
-# checkpoint = torch.load('checkpoint.pth')
-# model.load_state_dict(checkpoint['model_state_dict'])
-# optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
-# start_epoch = checkpoint['epoch'] + 1  # This should be 1 for the second epoch
-# print("Starting training from epoch:", start_epoch)
+def trainBaseLine(model, train_loader, val_loader, test_loader, class_names, criterion, opt, epochs, checkpoint_path, result_path):
+    '''
+    Args:
+    - model (nn.Module): The model to train
+    - train_loader (DataLoader): DataLoader for the training set
+    - valid_loader (DataLoader): DataLoader for the validation set
+    - test_loader (DataLoader): DataLoader for the test set
+    - class_names (list): List of class names
+    - criterion (nn.Module): Loss function
+    - opt (torch.optim.Optimizer): Optimizer
+    - epochs (int): Number of epochs
+    - checkpoint_path (str): Path to save the model checkpoint
+    - result_path (str): Path to save the training results
+    Returns:
+    - None
+    '''
+    # Load pre-trained ResNet-50
+    model = resnet50(weights=ResNet50_Weights.DEFAULT)
 
-## BASELINE ## 
-# result_path = "result/result_CE_SGD_BASELINE.pkl"
-# checkpoint_path = "checkpoints/result_CE_SGD_BASELINE.pth"
-# # Loss function and optimizer
-# criterion = nn.CrossEntropyLoss()
-# optimizer = torch.optim.SGD(model.fc.parameters(), lr=0.001, momentum=0.9)
-# train(model=model, train_loader=train_loader, valid_loader=val_loader, test_loader=test_loader, class_names = class_names, criterion=criterion, opt=optimizer, epochs=8, checkpoint_path=checkpoint_path, result_path=result_path)
+    # Modify the final layer for 7 emotion classes
+    num_ftrs = model.fc.in_features
+    model.fc = nn.Linear(num_ftrs, len(class_names))
 
-## ADDING a custom classification layer ##
-# Load the baseline model
-checkpoint = torch.load('checkpoints/result_CE_SGD_BASELINE.pth')  # Replace with your checkpoint path
-model.load_state_dict(checkpoint['model_state_dict'])
+    # Move model to GPU if available
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    model = model.to(device)
 
-# Freeze earlier layers to focus on training the new layers initially
-for param in model.parameters():
-    param.requires_grad = False
+    # Freeze the convolutional and intermediate layers
+    for param in model.parameters():
+        param.requires_grad = False
 
-# Wrap the existing model.fc
-model.fc = nn.Sequential(
-    model.fc,                  # Existing fc layer (already trained during baseline)
-    nn.ReLU(),                 # Add ReLU activation for non-linearity
-    nn.Dropout(0.5),           # Add dropout for regularization
-    nn.Linear(7, 256),         # Additional layer with 256 neurons
-    nn.ReLU(),                 # Add ReLU for the new layer
-    nn.Dropout(0.5),           # Add another dropout
-    nn.Linear(256, 7)          # Output layer for 7 emotion classes
-)
+    # Unfreeze the final fully connected layer (the last layer)
+    for param in model.fc.parameters():
+        param.requires_grad = True
 
-# Print the model to verify the changes
-# print(model)
-
-# Experiment with different optimizers and learning rates
-optimizers = [
-    (torch.optim.SGD(model.fc.parameters(), lr=0.001, momentum=0.9), 0.001),
-    (torch.optim.SGD(model.fc.parameters(), lr=0.0001, momentum=0.9), 0.0001),
-    (torch.optim.Adam(model.fc.parameters(), lr=0.001), 0.001),
-    (torch.optim.Adam(model.fc.parameters(), lr=0.0001), 0.0001)
-]
-
-for optimizer, lr in optimizers:
+    result_path = "result/result_CE_SGD_BASELINE.pkl"
+    checkpoint_path = "checkpoints/result_CE_SGD_BASELINE.pth"
+    # Loss function and optimizer
     criterion = nn.CrossEntropyLoss()
-    optimizer_name = optimizer.__class__.__name__
-    result_path_added = f"result/result_{optimizer_name}_lr{lr}.pkl"
-    checkpoint_path_added = f"checkpoints/result_{optimizer_name}_lr{lr}.pth"
-    train(model=model, train_loader=train_loader, valid_loader=val_loader, test_loader=test_loader, class_names=class_names, criterion=criterion, opt=optimizer, epochs=8, checkpoint_path=checkpoint_path_added, result_path=result_path_added)
-    results = load_experiment(result_path_added)
+    optimizer = torch.optim.SGD(model.fc.parameters(), lr=0.001, momentum=0.9)
+    train(model=model, train_loader=train_loader, valid_loader=val_loader, test_loader=test_loader, class_names = class_names, criterion=criterion, opt=optimizer, epochs=8, checkpoint_path=checkpoint_path, result_path=result_path)
+
+def trainAdded(model, train_loader, val_loader, test_loader, class_names, criterion, opt, epochs, checkpoint_path, result_path):
+    '''
+    Args:
+    - model (nn.Module): The model to train
+    - train_loader (DataLoader): DataLoader for the training set
+    - valid_loader (DataLoader): DataLoader for the validation set
+    - test_loader (DataLoader): DataLoader for the test set
+    - class_names (list): List of class names
+    - criterion (nn.Module): Loss function
+    - opt (torch.optim.Optimizer): Optimizer
+    - epochs (int): Number of epochs
+    - checkpoint_path (str): Path to save the model checkpoint
+    - result_path (str): Path to save the training results
+    Returns:
+    - None
+    '''
+    # ADDING a custom classification layer #
+    # Load the baseline model
+    checkpoint = torch.load('checkpoints/result_CE_SGD_Added.pth')  # Replace with your checkpoint path
+    model.load_state_dict(checkpoint['model_state_dict'])
+
+    # Freeze earlier layers to focus on training the new layers initially
+    for param in model.parameters():
+        param.requires_grad = False
+
+    # Wrap the existing model.fc
+    model.fc = nn.Sequential(
+        model.fc,                  # Existing fc layer (already trained during baseline)
+        nn.ReLU(),                 # Add ReLU activation for non-linearity
+        nn.Dropout(0.5),           # Add dropout for regularization
+        nn.Linear(7, 256),         # Additional layer with 256 neurons
+        nn.ReLU(),                 # Add ReLU for the new layer
+        nn.Dropout(0.5),           # Add another dropout
+        nn.Linear(256, 7)          # Output layer for 7 emotion classes
+    )
+
+    # Print the model to verify the changes
+    print(model)
+
+    # result_path_Added = 'result/result_Adam_lr0.0001_finetune_layer4.pkl'
+    # checkpoint_path_finetune = 'checkpoints/result_Adam_lr0.0001_finetune_layer4.pth'
+    # criterion = nn.CrossEntropyLoss()
+    # optimizer = torch.optim.SGD(model.fc.parameters(), lr=0.001, momentum=0.9)
+    # train(model=model, train_loader=train_loader, valid_loader=val_loader, test_loader=test_loader, class_names=class_names, criterion=criterion, opt=optimizer, epochs=8, checkpoint_path=checkpoint_path_added, result_path=result_path_added)
+
+def experiment(model):
+    '''
+    Function to run the experiment
+    Args:
+    - model (nn.Module): The model to train
+    Returns:
+    - None
+    '''
+    # Experiment with different optimizers and learning rates
+    optimizers = [
+        (torch.optim.SGD(model.fc.parameters(), lr=0.001, momentum=0.9), 0.001),
+        (torch.optim.SGD(model.fc.parameters(), lr=0.0001, momentum=0.9), 0.0001),
+        (torch.optim.Adam(model.fc.parameters(), lr=0.001), 0.001),
+        (torch.optim.Adam(model.fc.parameters(), lr=0.0001), 0.0001)
+    ]
+
+    for optimizer, lr in optimizers:
+        criterion = nn.CrossEntropyLoss()
+        optimizer_name = optimizer.__class__.__name__
+        result_path_added = f"result/result_{optimizer_name}_lr{lr}.pkl"
+        checkpoint_path_added = f"checkpoints/result_{optimizer_name}_lr{lr}.pth"
+        train(model=model, train_loader=train_loader, valid_loader=val_loader, test_loader=test_loader, class_names=class_names, criterion=criterion, opt=optimizer, epochs=8, checkpoint_path=checkpoint_path_added, result_path=result_path_added)
+        results = load_experiment(result_path_added)
+        print_result(results, 8)
+
+def load_print_results(resultname, epochs):
+    '''
+    Function to load and print results of an training
+    Args:
+    - resultname (string): Name of the result file
+    Returns:
+    - None
+    '''
+    loadedResult = load_experiment(f'result/result_{resultname}.pkl')
+    result_paths_plots = [f'resnet50_result_Images/result_{resultname}.png']
+    plot_figures(loadedResult, result_paths_plots, epochs)
+    print_result(loadedResult, epochs)
+
+def trainMoreLayers():
+    '''
+    Function to train more layers of the model
+    Args:
+    - None
+    Returns:
+    - None
+    '''
+    # Define the paths
+    checkpoint_path = 'checkpoints/result_Adam_lr0.001_Added.pth'  # Replace with your checkpoint path
+    result_path_finetune = 'result/result_Adam_lr0.0001_finetune_layer4.pkl'
+    checkpoint_path_finetune = 'checkpoints/result_Adam_lr0.0001_finetune_layer4.pth'
+
+    # Load the model
+    # model = models.resnet50()
+    checkpoint = torch.load(checkpoint_path)
+    model.load_state_dict(checkpoint['model_state_dict'])
+
+    # Unfreeze layer4 to continue training
+    for param in model.layer4.parameters():
+        param.requires_grad = True
+
+    # Ensure the custom classification layer is also trainable
+    for param in model.fc.parameters():
+        param.requires_grad = True
+
+    # Wrap the existing model.fc (if not already done)
+    model.fc = nn.Sequential(
+        model.fc,                  # Existing fc layer (already trained during baseline)
+        nn.ReLU(),                 # Add ReLU activation for non-linearity
+        nn.Dropout(0.5),           # Add dropout for regularization
+        nn.Linear(7, 256),         # Additional layer with 256 neurons
+        nn.ReLU(),                 # Add ReLU for the new layer
+        nn.Dropout(0.5),           # Add another dropout
+        nn.Linear(256, 7)          # Output layer for 7 emotion classes
+    )
+
+    # Print the model to verify the changes
+    print(model)
+
+    # Set the optimizer to update the parameters of layer4 and the custom classification layer
+    optimizer = optim.Adam(model.parameters(), lr=0.0001)  # Use a lower learning rate for fine-tuning
+    criterion = nn.CrossEntropyLoss()
+
+    # Define the train function (assuming you have this function defined in your original script)
+    def train(model, train_loader, valid_loader, test_loader, class_names, criterion, opt, epochs, checkpoint_path, result_path):
+        # Your training code here
+        pass
+
+    # Define the load_experiment function (assuming you have this function defined in your original script)
+    def load_experiment(result_path):
+        # Your code to load experiment results here
+        pass
+
+    # Define the print_result function (assuming you have this function defined in your original script)
+    def print_result(results, num_epochs):
+        # Your code to print results here
+        pass
+
+    # Continue training the model
+    train(model=model, train_loader=train_loader, valid_loader=val_loader, test_loader=test_loader, class_names=class_names, criterion=criterion, opt=optimizer, epochs=8, checkpoint_path=checkpoint_path_finetune, result_path=result_path_finetune)
+
+    # Load and print results
+    results = load_experiment(result_path_finetune)
     print_result(results, 8)
 
-# results_result_CE_SGD_BASELINE = load_experiment('result/result_CE_SGD_BASELINE.pkl')
-# result_CE_SGD_BASELINE_paths_plots = ['resnet50_result_Images/result_CE_SGD_BASELINE.png']
-# plot_figures(results_result_CE_SGD_BASELINE, result_CE_SGD_BASELINE_paths_plots, 8)
-# print_result(results_result_CE_SGD_BASELINE, 8)
+train_loader, val_loader, test_loader, class_names = load_data()
+print("Data loaded successfully", class_names)
 
-# results_result_CE_SGD_Added = load_experiment('result/result_CE_SGD_Added.pkl')
-# result_CE_SGD_Added_paths_plots = ['resnet50_result_Images/result_CE_SGD_Added.png']
-# plot_figures(results_result_CE_SGD_Added, result_CE_SGD_Added_paths_plots, 8)
-# print_result(results_result_CE_SGD_Added, 8)
-
-# results_result_CE_Adam_Added = load_experiment('result/result_CE_Adam_Added.pkl')
-# result_CE_Adam_Added_paths_plots = ['resnet50_result_Images/result_CE_Adam_Added.png']
-# print_result(results_result_CE_Adam_Added, 1)
+# # printing the results from the different optimizers and learning rates
+# resultfiles = ['result/result_Adam_lr0.001.pkl', 'result/result_Adam_lr0.0001.pkl', 'result/result_SGD_lr0.001.pkl', 'result/result_SGD_lr0.0001.pkl']
+# for resultfile in resultfiles:
+#     results = load_experiment(resultfile)
+#     #plot_figures(results, [resultfile[:-4] + '.png'], 8)
+#     print_result(results, 8)
