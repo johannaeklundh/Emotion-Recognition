@@ -6,7 +6,7 @@ import pickle
 import random
 import numpy as np
 import pandas as pd
-from sklearn.metrics import classification_report, confusion_matrix, f1_score, precision_score, recall_score, roc_auc_score, accuracy_score, roc_curve, auc, precision_recall_curve, RocCurveDisplay
+from sklearn.metrics import confusion_matrix, f1_score, precision_score, recall_score, roc_auc_score, accuracy_score, roc_curve, auc, precision_recall_curve, RocCurveDisplay
 from sklearn.preprocessing import label_binarize
 from itertools import cycle
 import torch
@@ -40,6 +40,7 @@ torch.backends.cudnn.benchmark = False
 # TO DOWNLOAD THE DATASET, RUN THIS IN TERMINAL WHERE YOU WAN TO STORE IT
 # kaggle datasets download -d msambare/fer2013
 # unzip fer2013.zip -d /datasetFer2013/
+
 def split_data():
     '''
     Function to split the data into training, validation and test sets
@@ -84,7 +85,6 @@ def load_data():
     - test_loader (DataLoader): DataLoader for the test set
     - class_names (list): List of class names
     '''
-
     
     # Define the paths to the dataset directories
     train_dir = '../dataset/train'
@@ -101,6 +101,9 @@ def load_data():
     # Load datasets
     train_dataset = datasets.ImageFolder(root=train_dir, transform=transform50)
     test_dataset = datasets.ImageFolder(root=test_dir, transform=transform50)
+    
+    # get names of the classes
+    class_names = train_dataset.classes
 
     # Load the saved indices
     train_indices = np.load('train_indices.npy')
@@ -114,6 +117,37 @@ def load_data():
     val_loader = DataLoader(val_dataset, batch_size=64, shuffle=False)     # No shuffle for validation
     test_loader = DataLoader(test_dataset, batch_size=64, shuffle=False)  # No shuffle for testing
     return train_loader, val_loader, test_loader, class_names
+
+def loadModel(checkpoint_path):
+    '''
+    Function to load the model from a checkpoint
+    Args:
+    - checkpoint_path (str): Path to the model checkpoint
+    Returns:
+    - model (nn.Module): The model
+    '''
+    model = resnet50(weights=ResNet50_Weights.DEFAULT)
+    model.fc = nn.Sequential( # Modify the final layer for 7 emotion classes and my trained model
+        nn.Linear(model.fc.in_features, 256),
+        nn.ReLU(),
+        nn.Dropout(0.5),
+        nn.Linear(256, 7)  # 7 emotion classes
+    )
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    model = model.to(device)
+
+    checkpointBest = torch.load(checkpoint_path)
+
+    state_dict = checkpointBest['model_state_dict']
+    # Filter out the keys that do not match the current model architecture
+    new_state_dict = {}
+    for k, v in state_dict.items():
+        if k in model.state_dict() and model.state_dict()[k].shape == v.shape:
+            new_state_dict[k] = v
+
+    # Load the filtered state_dict
+    model.load_state_dict(new_state_dict, strict=False)
+    return model
 
 def train(model, train_loader, valid_loader, test_loader, class_names, criterion, opt, epochs, checkpoint_path, result_path):
     '''
@@ -430,6 +464,7 @@ def print_result (results, num_epochs):
 
     train_accuracies = results['train_accuracies']
     val_accuracies = results['val_accuracies']
+    test_accuracy = results['accuracy']
     recall = results['recall']
     f1 = results['f1']
     roc = results['roc_auc']
@@ -443,37 +478,24 @@ def print_result (results, num_epochs):
     correct_classifications = int(total_images * results['accuracy'])
     incorrect_classifications = total_images - correct_classifications
     
-    print('Train Accuracy: ', train_accuracies_last)
-    print('Valid Accuracy: ', val_accuracies_last)
+    print('Test Accuracy: ', test_accuracy)
     print('Correctly Classified Images: ', correct_classifications)
     print('Correct Classification Rate: ', results['accuracy'])
     print('Incorrectly Classified Images: ', incorrect_classifications)
-    print('Incorrect Classification Rate: ', 1 - results['accuracy'])
+    print('Incorrect Classification Rate: ', 1 - results['accuracy'], '\n')
 
-def load_experiment(result_path):
+def load_experiment (result_path):
     with open(result_path, 'rb') as f:
         loaded_results = pickle.load(f)
     print("succsessfully loaded: " + result_path)
     #print("Loaded training results:", loaded_results)
     return loaded_results
 
-# creates folders to save checkpoints and results
-os.makedirs('checkpoints', exist_ok=True)
-os.makedirs('result', exist_ok=True)
-os.makedirs('resnet50_result_Images', exist_ok=True)
-
-def continueStartedTraining(model, optimizer, train_loader, val_loader, test_loader, class_names, criterion, epochs, checkpoint_path):
+def continueStartedTraining(model, optimizer): # not sure that it works
     '''
     Args:
     - model (nn.Module): The model to train
     - optimizer (torch.optim.Optimizer): Optimizer
-    - train_loader (DataLoader): DataLoader for the training set
-    - val_loader (DataLoader): DataLoader for the validation set
-    - test_loader (DataLoader): DataLoader for the test set
-    - class_names (list): List of class names
-    - criterion (nn.Module): Loss function
-    - epochs (int): Number of epochs
-    - checkpoint_path (str): Path to save the model checkpoint
     Returns:
     - None
     '''
@@ -485,7 +507,7 @@ def continueStartedTraining(model, optimizer, train_loader, val_loader, test_loa
     start_epoch = checkpoint['epoch'] + 1  # This should be 1 for the second epoch
     print("Starting training from epoch:", start_epoch)
 
-def trainBaseLine(model, train_loader, val_loader, test_loader, class_names, criterion, opt, epochs, checkpoint_path, result_path):
+def trainBaseLine(model, train_loader, val_loader, test_loader, class_names):
     '''
     Args:
     - model (nn.Module): The model to train
@@ -527,7 +549,7 @@ def trainBaseLine(model, train_loader, val_loader, test_loader, class_names, cri
     optimizer = torch.optim.SGD(model.fc.parameters(), lr=0.001, momentum=0.9)
     train(model=model, train_loader=train_loader, valid_loader=val_loader, test_loader=test_loader, class_names = class_names, criterion=criterion, opt=optimizer, epochs=8, checkpoint_path=checkpoint_path, result_path=result_path)
 
-def trainAdded(model, train_loader, val_loader, test_loader, class_names, criterion, opt, epochs, checkpoint_path, result_path):
+def trainAdded(model, train_loader, val_loader, test_loader, class_names):
     '''
     Args:
     - model (nn.Module): The model to train
@@ -545,7 +567,7 @@ def trainAdded(model, train_loader, val_loader, test_loader, class_names, criter
     '''
     # ADDING a custom classification layer #
     # Load the baseline model
-    checkpoint = torch.load('checkpoints/result_CE_SGD_Added.pth')  # Replace with your checkpoint path
+    checkpoint = torch.load('checkpoints/result_CE_SGD_BASELINE.pth')  # Replace with your checkpoint path
     model.load_state_dict(checkpoint['model_state_dict'])
 
     # Freeze earlier layers to focus on training the new layers initially
@@ -566,11 +588,11 @@ def trainAdded(model, train_loader, val_loader, test_loader, class_names, criter
     # Print the model to verify the changes
     print(model)
 
-    # result_path_Added = 'result/result_Adam_lr0.0001_finetune_layer4.pkl'
-    # checkpoint_path_finetune = 'checkpoints/result_Adam_lr0.0001_finetune_layer4.pth'
-    # criterion = nn.CrossEntropyLoss()
-    # optimizer = torch.optim.SGD(model.fc.parameters(), lr=0.001, momentum=0.9)
-    # train(model=model, train_loader=train_loader, valid_loader=val_loader, test_loader=test_loader, class_names=class_names, criterion=criterion, opt=optimizer, epochs=8, checkpoint_path=checkpoint_path_added, result_path=result_path_added)
+    result_path_Added = 'result/result_Adam_lr0.0001_finetune_layer4.pkl'
+    checkpoint_path_Added = 'checkpoints/result_Adam_lr0.0001_finetune_layer4.pth'
+    criterion = nn.CrossEntropyLoss()
+    optimizer = torch.optim.SGD(model.fc.parameters(), lr=0.001, momentum=0.9)
+    train(model=model, train_loader=train_loader, valid_loader=val_loader, test_loader=test_loader, class_names=class_names, criterion=criterion, opt=optimizer, epochs=8, checkpoint_path=checkpoint_path_Added, result_path=result_path_Added)
 
 def experiment(model):
     '''
@@ -610,74 +632,83 @@ def load_print_results(resultname, epochs):
     plot_figures(loadedResult, result_paths_plots, epochs)
     print_result(loadedResult, epochs)
 
-def trainMoreLayers():
+def trainMoreLayers(model, train_loader, val_loader, test_loader, class_names, epochs, layers_to_unfreeze, checkpoint_path, result_path):
     '''
     Function to train more layers of the model
     Args:
-    - None
+    - model (nn.Module): The model to train
+    - train_loader (DataLoader): DataLoader for the training set
+    - valid_loader (DataLoader): DataLoader for the validation set
+    - test_loader (DataLoader): DataLoader for the test set
+    - class_names (list): List of class names
+    - epochs (int): Number of epochs
+    - checkpoint_path (str): Path to save the model checkpoint
+    - result_path (str): Path to save the training results
     Returns:
     - None
     '''
-    # Define the paths
-    checkpoint_path = 'checkpoints/result_Adam_lr0.001_Added.pth'  # Replace with your checkpoint path
-    result_path_finetune = 'result/result_Adam_lr0.0001_finetune_layer4.pkl'
-    checkpoint_path_finetune = 'checkpoints/result_Adam_lr0.0001_finetune_layer4.pth'
+    # # Define the paths
+    # checkpoint_path = 'checkpoints/result_Adam_lr0.001_Added.pth'  # Replace with your checkpoint path
+    # result_path_finetune = 'result/result_Adam_lr0.0001_finetune_layer4.pkl'
+    # checkpoint_path_finetune = 'checkpoints/result_Adam_lr0.0001_finetune_layer4.pth'
 
-    # Load the model
-    # model = models.resnet50()
-    checkpoint = torch.load(checkpoint_path)
-    model.load_state_dict(checkpoint['model_state_dict'])
-
-    # Unfreeze layer4 to continue training
-    for param in model.layer4.parameters():
-        param.requires_grad = True
+    # Unfreeze specified layers to continue training
+    for layer_name in layers_to_unfreeze:
+        layer = getattr(model, layer_name)
+        for param in layer.parameters():
+            param.requires_grad = True
 
     # Ensure the custom classification layer is also trainable
     for param in model.fc.parameters():
         param.requires_grad = True
 
-    # Wrap the existing model.fc (if not already done)
-    model.fc = nn.Sequential(
-        model.fc,                  # Existing fc layer (already trained during baseline)
-        nn.ReLU(),                 # Add ReLU activation for non-linearity
-        nn.Dropout(0.5),           # Add dropout for regularization
-        nn.Linear(7, 256),         # Additional layer with 256 neurons
-        nn.ReLU(),                 # Add ReLU for the new layer
-        nn.Dropout(0.5),           # Add another dropout
-        nn.Linear(256, 7)          # Output layer for 7 emotion classes
-    )
+    # # Wrap the existing model.fc (if not already done)
+    # model.fc = nn.Sequential(
+    #     model.fc,                  # Existing fc layer (already trained during baseline)
+    #     nn.ReLU(),                 # Add ReLU activation for non-linearity
+    #     nn.Dropout(0.5),           # Add dropout for regularization
+    #     nn.Linear(7, 256),         # Additional layer with 256 neurons
+    #     nn.ReLU(),                 # Add ReLU for the new layer
+    #     nn.Dropout(0.5),           # Add another dropout
+    #     nn.Linear(256, 7)          # Output layer for 7 emotion classes
+    # )
 
     # Print the model to verify the changes
     print(model)
 
     # Set the optimizer to update the parameters of layer4 and the custom classification layer
-    optimizer = optim.Adam(model.parameters(), lr=0.0001)  # Use a lower learning rate for fine-tuning
+    optimizer = torch.optim.Adam(model.parameters(), lr=0.0001)  # Use a lower learning rate for fine-tuning
     criterion = nn.CrossEntropyLoss()
 
     # Define the train function (assuming you have this function defined in your original script)
-    def train(model, train_loader, valid_loader, test_loader, class_names, criterion, opt, epochs, checkpoint_path, result_path):
-        # Your training code here
-        pass
-
-    # Define the load_experiment function (assuming you have this function defined in your original script)
-    def load_experiment(result_path):
-        # Your code to load experiment results here
-        pass
+    model, results = train(model, train_loader, val_loader, test_loader, class_names, criterion, optimizer, epochs, checkpoint_path, result_path)
 
     # Define the print_result function (assuming you have this function defined in your original script)
-    def print_result(results, num_epochs):
-        # Your code to print results here
-        pass
+    print_result(results, epochs)
+    return model
 
-    # Continue training the model
-    train(model=model, train_loader=train_loader, valid_loader=val_loader, test_loader=test_loader, class_names=class_names, criterion=criterion, opt=optimizer, epochs=8, checkpoint_path=checkpoint_path_finetune, result_path=result_path_finetune)
-
-    # Load and print results
-    results = load_experiment(result_path_finetune)
-    print_result(results, 8)
+# creates folders to save checkpoints and results
+os.makedirs('checkpoints', exist_ok=True)
+os.makedirs('result', exist_ok=True)
+os.makedirs('resnet50_result_Images', exist_ok=True)
 
 train_loader, val_loader, test_loader, class_names = load_data()
-print("Data loaded successfully", class_names)
+
+model = loadModel('checkpoints/result_SGD_lr0.0001.pth')
+
+layers_to_unfreeze = ['layer4']
+layer4_model = trainMoreLayers(model, train_loader, val_loader, test_loader, class_names, 8, layers_to_unfreeze, 'checkpoints/SGD_lr0.0001_layer4.pth', 'result/SGD_lr0.0001_layer4.pkl')
+
+layers_to_unfreeze = ['layer3', 'layer4']
+layer34_model = trainMoreLayers(layer4_model, train_loader, val_loader, test_loader, class_names, 8, layers_to_unfreeze, 'checkpoints/SGD_lr0.0001_layer34.pth', 'result/SGD_lr0.0001_layer34.pkl')
+
+# Unfreeze and train layer2, layer3, and layer4
+layers_to_unfreeze = ['layer2', 'layer3', 'layer4']
+layer234_model = trainMoreLayers(layer34_model, train_loader, val_loader, test_loader, class_names, 8, layers_to_unfreeze, 'checkpoints/SGD_lr0.0001_layer234.pth', 'result/SGD_lr0.0001_layer234.pkl')
+
+# Unfreeze and train layer1, layer2, layer3, and layer4
+# layers_to_unfreeze = ['layer1', 'layer2', 'layer3', 'layer4']
+# layer1234_model = trainMoreLayers(layer234_model, train_loader, val_loader, test_loader, class_names, 8, layers_to_unfreeze, 'checkpoints/SGD_lr0.0001_layer1234.pth', 'result/SGD_lr0.0001_layer1234.pkl')
 
 # # printing the results from the different optimizers and learning rates
 # resultfiles = ['result/result_Adam_lr0.001.pkl', 'result/result_Adam_lr0.0001.pkl', 'result/result_SGD_lr0.001.pkl', 'result/result_SGD_lr0.0001.pkl']
