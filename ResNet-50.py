@@ -707,8 +707,8 @@ layers_to_unfreeze = ['layer2', 'layer3', 'layer4']
 layer234_model = trainMoreLayers(layer34_model, train_loader, val_loader, test_loader, class_names, 8, layers_to_unfreeze, 'checkpoints/SGD_lr0.0001_layer234.pth', 'result/SGD_lr0.0001_layer234.pkl')
 
 # Unfreeze and train layer1, layer2, layer3, and layer4
-# layers_to_unfreeze = ['layer1', 'layer2', 'layer3', 'layer4']
-# layer1234_model = trainMoreLayers(layer234_model, train_loader, val_loader, test_loader, class_names, 8, layers_to_unfreeze, 'checkpoints/SGD_lr0.0001_layer1234.pth', 'result/SGD_lr0.0001_layer1234.pkl')
+layers_to_unfreeze = ['layer1', 'layer2', 'layer3', 'layer4']
+layer1234_model = trainMoreLayers(layer234_model, train_loader, val_loader, test_loader, class_names, 8, layers_to_unfreeze, 'checkpoints/SGD_lr0.0001_layer1234.pth', 'result/SGD_lr0.0001_layer1234.pkl')
 
 # # printing the results from the different optimizers and learning rates
 # resultfiles = ['result/result_Adam_lr0.001.pkl', 'result/result_Adam_lr0.0001.pkl', 'result/result_SGD_lr0.001.pkl', 'result/result_SGD_lr0.0001.pkl']
