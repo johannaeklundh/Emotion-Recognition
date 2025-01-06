@@ -41,42 +41,9 @@ torch.backends.cudnn.benchmark = False
 # kaggle datasets download -d msambare/fer2013
 # unzip fer2013.zip -d /datasetFer2013/
 
-def split_data():
-    '''
-    Function to split the data into training, validation and test sets
-    Args:
-    - None
-    Returns:
-    - None
-    '''
-    # Define the paths to the dataset directories
-    train_dir = '../dataset/train'
-    test_dir = '../dataset/test'
-
-    # Data transformations
-    transform50 = transforms.Compose([
-        transforms.Grayscale(num_output_channels=3),  # Convert grayscale to RGB
-        transforms.Resize((224, 224)),               # Resize for ResNet
-        transforms.ToTensor(),                       # Convert to PyTorch tensor
-        transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])  # Normalize
-    ])
-
-    # Load datasets
-    train_dataset = datasets.ImageFolder(root=train_dir, transform=transform50)
-    test_dataset = datasets.ImageFolder(root=test_dir, transform=transform50)
-
-    # Define the validation split ratio
-    val_size = int(0.2 * len(train_dataset))  # 20% for validation
-    train_size = len(train_dataset) - val_size
-
-    # Randomly split the dataset and save the indices
-    train_indices, val_indices = torch.utils.data.random_split(range(len(train_dataset)), [train_size, val_size])
-    np.save('train_indices.npy', train_indices.indices)
-    np.save('val_indices.npy', val_indices.indices)
-
 def load_data():
     ''''
-    Function to load the data and create DataLoaders for training, validation and testing
+    Function to load the data and create DataLoaders for training, validation, and testing
     Args:
     - None
     Returns:
@@ -102,20 +69,21 @@ def load_data():
     train_dataset = datasets.ImageFolder(root=train_dir, transform=transform50)
     test_dataset = datasets.ImageFolder(root=test_dir, transform=transform50)
     
-    # get names of the classes
+    # Get names of the classes
     class_names = train_dataset.classes
 
-    # Load the saved indices
-    train_indices = np.load('train_indices.npy', allow_pickle=True)
-    val_indices = np.load('val_indices.npy', allow_pickle=True)
-    # Create Subsets using the saved indices
-    train_dataset = Subset(train_dataset, train_indices)
-    val_dataset = Subset(train_dataset, val_indices)
-    # Create DataLoaders for the training and validation datasets
+    # Define the validation split ratio
+    val_size = int(0.2 * len(train_dataset))  # 20% for validation
+    train_size = len(train_dataset) - val_size
 
+    # Randomly split the dataset
+    train_dataset, val_dataset = random_split(train_dataset, [train_size, val_size])
+
+    # Create DataLoaders for the training and validation datasets
     train_loader = DataLoader(train_dataset, batch_size=64, shuffle=True)  # Shuffle enabled
     val_loader = DataLoader(val_dataset, batch_size=64, shuffle=False)     # No shuffle for validation
     test_loader = DataLoader(test_dataset, batch_size=64, shuffle=False)  # No shuffle for testing
+    
     return train_loader, val_loader, test_loader, class_names
 
 def loadModel(checkpoint_path):
@@ -692,7 +660,6 @@ os.makedirs('checkpoints', exist_ok=True)
 os.makedirs('result', exist_ok=True)
 os.makedirs('resnet50_result_Images', exist_ok=True)
 
-split_data()
 train_loader, val_loader, test_loader, class_names = load_data()
 
 model = loadModel('checkpoints/result_SGD_lr0.0001.pth')
