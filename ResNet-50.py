@@ -692,6 +692,7 @@ os.makedirs('checkpoints', exist_ok=True)
 os.makedirs('result', exist_ok=True)
 os.makedirs('resnet50_result_Images', exist_ok=True)
 
+split_data()
 train_loader, val_loader, test_loader, class_names = load_data()
 
 model = loadModel('checkpoints/result_SGD_lr0.0001.pth')
