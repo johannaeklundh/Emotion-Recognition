@@ -1,9 +1,8 @@
 # Emotion-Recognition
 This repository contains our group's final project in the *Biometric systems* course Sapienze University of Rome 2024/2025
 
-### Group Members
+### Group Member
  - Johanna Eklundh, 2183564
- - Ona Vera Garcia, 2186461
 
 ## Dataset
 In this project, we used the FER-2013 data set sourced from https://www.kaggle.com/datasets/msambare/fer2013
