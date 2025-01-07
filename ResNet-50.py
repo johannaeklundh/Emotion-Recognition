@@ -240,7 +240,7 @@ def train(model, train_loader, valid_loader, test_loader, class_names, criterion
             'optimizer_state_dict': opt.state_dict(),
             'valid_loss': avg_val_loss  # Save validation loss for reference
         }, checkpoint_path)
-        print(f"Checkpoint saved at epoch {epoch + 1}")
+        print(f"Checkpoint saved at epoch {epoch + 1}") 
     
     print('Finished Training')
 
@@ -311,7 +311,7 @@ def train(model, train_loader, valid_loader, test_loader, class_names, criterion
     
     return model, results
 
-def plot_figures(results, path, num_epochs):
+def plot_figures(results, path, num_epochs, class_names = ['Angry', 'Disgust', 'Fear', 'Happy', 'Sad', 'Surprise', 'Neutral']):
     '''
     Function that, given training, validation and test results, plots and saves images
     Args:
@@ -660,27 +660,41 @@ os.makedirs('checkpoints', exist_ok=True)
 os.makedirs('result', exist_ok=True)
 os.makedirs('resnet50_result_Images', exist_ok=True)
 
-train_loader, val_loader, test_loader, class_names = load_data()
+# train_loader, val_loader, test_loader, class_names = load_data()
 
-model = loadModel('checkpoints/result_SGD_lr0.0001.pth')
+# model = loadModel('checkpoints/result_SGD_lr0.0001.pth')
 
-layers_to_unfreeze = ['layer4']
-layer4_model = trainMoreLayers(model, train_loader, val_loader, test_loader, class_names, 8, layers_to_unfreeze, 'checkpoints/SGD_lr0.0001_layer4.pth', 'result/SGD_lr0.0001_layer4.pkl')
+# layers_to_unfreeze = ['layer4']
+# layer4_model = trainMoreLayers(model, train_loader, val_loader, test_loader, class_names, 8, layers_to_unfreeze, 'checkpoints/SGD_lr0.0001_layer4.pth', 'result/SGD_lr0.0001_layer4.pkl')
 
-layers_to_unfreeze = ['layer3', 'layer4']
-layer34_model = trainMoreLayers(layer4_model, train_loader, val_loader, test_loader, class_names, 8, layers_to_unfreeze, 'checkpoints/SGD_lr0.0001_layer34.pth', 'result/SGD_lr0.0001_layer34.pkl')
+# layers_to_unfreeze = ['layer3', 'layer4']
+# layer34_model = trainMoreLayers(layer4_model, train_loader, val_loader, test_loader, class_names, 8, layers_to_unfreeze, 'checkpoints/SGD_lr0.0001_layer34.pth', 'result/SGD_lr0.0001_layer34.pkl')
 
-# Unfreeze and train layer2, layer3, and layer4
-layers_to_unfreeze = ['layer2', 'layer3', 'layer4']
-layer234_model = trainMoreLayers(layer34_model, train_loader, val_loader, test_loader, class_names, 8, layers_to_unfreeze, 'checkpoints/SGD_lr0.0001_layer234.pth', 'result/SGD_lr0.0001_layer234.pkl')
+# # Unfreeze and train layer2, layer3, and layer4
+# layers_to_unfreeze = ['layer2', 'layer3', 'layer4']
+# layer234_model = trainMoreLayers(layer34_model, train_loader, val_loader, test_loader, class_names, 8, layers_to_unfreeze, 'checkpoints/SGD_lr0.0001_layer234.pth', 'result/SGD_lr0.0001_layer234.pkl')
 
-# Unfreeze and train layer1, layer2, layer3, and layer4
-layers_to_unfreeze = ['layer1', 'layer2', 'layer3', 'layer4']
-layer1234_model = trainMoreLayers(layer234_model, train_loader, val_loader, test_loader, class_names, 8, layers_to_unfreeze, 'checkpoints/SGD_lr0.0001_layer1234.pth', 'result/SGD_lr0.0001_layer1234.pkl')
+# # Unfreeze and train layer1, layer2, layer3, and layer4
+# layers_to_unfreeze = ['layer1', 'layer2', 'layer3', 'layer4']
+# layer1234_model = trainMoreLayers(layer234_model, train_loader, val_loader, test_loader, class_names, 8, layers_to_unfreeze, 'checkpoints/SGD_lr0.0001_layer1234.pth', 'result/SGD_lr0.0001_layer1234.pkl')
 
-# # printing the results from the different optimizers and learning rates
-# resultfiles = ['result/result_Adam_lr0.001.pkl', 'result/result_Adam_lr0.0001.pkl', 'result/result_SGD_lr0.001.pkl', 'result/result_SGD_lr0.0001.pkl']
+# printing the results from different trainings
+# resultfiles = ['../result250107/result/SGD_lr0.0001_layer4.pkl', '../result250107/result/SGD_lr0.0001_layer34.pkl', '../result250107/result/SGD_lr0.0001_layer234.pkl', '../result250107/result/SGD_lr0.0001_layer1234.pkl']
 # for resultfile in resultfiles:
 #     results = load_experiment(resultfile)
-#     #plot_figures(results, [resultfile[:-4] + '.png'], 8)
-#     print_result(results, 8)
+#     plot_figures(results, [resultfile[:-4] + '.png'], 8)
+#     # print_result(results, 8)
+result1 = load_experiment('../result250107/result/SGD_lr0.0001_layer4.pkl')
+result2 = load_experiment('../result250107/result/SGD_lr0.0001_layer34.pkl')
+result3 = load_experiment('../result250107/result/SGD_lr0.0001_layer234.pkl')
+result4 = load_experiment('../result250107/result/SGD_lr0.0001_layer1234.pkl')
+
+result1Path = 'resnet50_result_Images/SGD_lr0.0001_layer4.png'
+result2Path = 'resnet50_result_Images/SGD_lr0.0001_layer34.png'
+result3Path = 'resnet50_result_Images/SGD_lr0.0001_layer234.png'
+result4Path = 'resnet50_result_Images/SGD_lr0.0001_layer1234.png'
+
+plot_figures(result1, [result1Path], 8)
+plot_figures(result2, [result2Path], 8)
+plot_figures(result3, [result3Path], 8)
+plot_figures(result4, [result4Path], 8)
